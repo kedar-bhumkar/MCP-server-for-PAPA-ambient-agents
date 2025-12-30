@@ -8,7 +8,7 @@ import {
 } from "@modelcontextprotocol/sdk/types.js";
 import http from "http";
 import { parse } from "url";
-import { generateSqlFromMessage } from "./llm.js";
+import { generateSqlFromMessage, performFileSearch } from "./llm.js";
 import { executeQuery } from "./db.js";
 import dotenv from "dotenv";
 
@@ -43,7 +43,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
   return {
     tools: [
       {
-        name: "get_agent_output",
+        name: "get_server_time",
         description: "Returns a message back with the current server time. Accepts a user_message string.",
         inputSchema: {
           type: "object",
@@ -57,7 +57,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
         },
       },
       {
-        name: "get_event_data",
+        name: "get_agent_output",
         description: "Translates a natural language query into SQL and executes it against the event database.",
         inputSchema: {
           type: "object",
@@ -65,6 +65,20 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
             user_message: {
               type: "string",
               description: "The natural language query from the user",
+            },
+          },
+          required: ["user_message"],
+        },
+      },
+      {
+        name: "get_rag_data",
+        description: "Executes a RAG (Retrieval-Augmented Generation) query using Gemini file search.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            user_message: {
+              type: "string",
+              description: "The task or question to perform using the file search tool",
             },
           },
           required: ["user_message"],
@@ -78,7 +92,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
  * Tool execution handler.
  */
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
-  if (request.params.name === "get_agent_output") {
+  if (request.params.name === "get_server_time") {
     const userMessage = (request.params.arguments as any)?.user_message;
     console.log(`User message: ${userMessage}`);
     const now = new Date().toLocaleTimeString();
@@ -92,7 +106,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     };
   }
 
-  if (request.params.name === "get_event_data") {
+  if (request.params.name === "get_agent_output") {
     const userMessage = (request.params.arguments as any)?.user_message;
     
     try {
@@ -116,7 +130,37 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         ],
       };
     } catch (error: any) {
-      console.error(`Error in get_event_data: ${error.message}`);
+      console.error(`Error in get_agent_output: ${error.message}`);
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error: ${error.message}`,
+          },
+        ],
+        isError: true,
+      };
+    }
+  }
+
+  if (request.params.name === "get_rag_data") {
+    const userMessage = (request.params.arguments as any)?.user_message;
+    console.log(`User message: ${userMessage}`);
+    
+    try {
+      const result = await performFileSearch(userMessage);
+      console.log(`Result: ${result}`);
+      
+      return {
+        content: [
+          {
+            type: "text",
+            text: result,
+          },
+        ],
+      };
+    } catch (error: any) {
+      console.error(`Error in get_rag_data: ${error.message}`);
       return {
         content: [
           {
